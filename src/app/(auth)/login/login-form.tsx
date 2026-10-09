@@ -42,7 +42,7 @@ export function LoginForm() {
     }
 
     const rol = normalizarRol(
-      data.user?.app_metadata?.rol ?? data.user?.user_metadata?.rol
+      data.user?.app_metadata?.rol ?? data.user?.user_metadata?.rol,
     );
     const destino = searchParams.get("next") ?? DASHBOARD_POR_ROL[rol];
 
@@ -54,8 +54,10 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">NEXO</CardTitle>
-        <CardDescription>Inicia sesión en tu cartera inmobiliaria</CardDescription>
+        <CardTitle className="text-3xl font-bold">NEXO</CardTitle>
+        <CardDescription>
+          Inicia sesión en tu cartera inmobiliaria
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={iniciarSesion} className="space-y-4">

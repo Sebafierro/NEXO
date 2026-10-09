@@ -29,7 +29,7 @@ create table if not exists public.usuarios (
   apellidos      text,
   telefono       text,
   rol            text not null default 'PROPIETARIO'
-                 check (rol in ('ADMINISTRADOR', 'PROPIETARIO')),
+                 check (rol in ('ADMINISTRADOR', 'EJECUTIVO', 'PROPIETARIO', 'ARRENDATARIO')),
   creado_en      timestamptz not null default now(),
   actualizado_en timestamptz not null default now()
 );

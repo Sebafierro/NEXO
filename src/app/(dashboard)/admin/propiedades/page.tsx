@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { normalizarRol, ROLES } from "@/lib/roles";
+import { requerirRol } from "@/lib/auth";
+import { ROLES } from "@/lib/roles";
 import { formatearMoneda } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,14 +26,10 @@ const ETIQUETA_ESTADO: Record<string, string> = {
 };
 
 export default async function AdminPropiedadesPage() {
-  const supabase = await createClient();
+  // Solo ADMINISTRADOR (el Proxy ya lo bloquea).
+  await requerirRol(ROLES.ADMINISTRADOR);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (normalizarRol(user?.app_metadata?.rol ?? user?.user_metadata?.rol) !== ROLES.ADMINISTRADOR) {
-    redirect("/propietario");
-  }
+  const supabase = await createClient();
 
   const { data: propiedades, error } = await supabase
     .from("propiedades")

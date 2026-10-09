@@ -17,6 +17,7 @@ type Props = {
   totalContratos: number;
 };
 
+// Componente compartido por los paneles de ADMINISTRADOR y EJECUTIVO.
 // "Semáforo de estado de la cartera":
 //  - Verde : contratos vigentes que no acumulan mora.
 //  - Ámbar : obligaciones por vencer en los próximos 7 días.
