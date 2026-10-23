@@ -41,7 +41,10 @@ export async function obtenerResumenCartera(supabase: SupabaseClient): Promise<R
       supabase
         .from("obligaciones")
         .select("id, monto, contrato_id")
-        .in("estado", ["PENDIENTE", "ATRASADA"])
+        // Mora = no pagada con saldo y fecha ya vencida. Se acepta ATRASADA por
+        // compatibilidad con datos legados (se normaliza a VENCIDA en
+        // 05_ciclo_financiero.sql).
+        .in("estado", ["PENDIENTE", "PAGO_PARCIAL", "VENCIDA", "ATRASADA"])
         .lt("fecha_vencimiento", hoyISO),
       supabase
         .from("obligaciones")

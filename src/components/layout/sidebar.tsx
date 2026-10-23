@@ -41,11 +41,11 @@ const NAV_POR_ROL: Record<Rol, NavItem[]> = {
   [ROLES.ADMINISTRADOR]: [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
-    {
-      href: "/admin/propiedades",
-      label: "Cartera / Propiedades",
-      icon: Building2,
-    },
+    { href: "/admin/propietarios", label: "Propietarios", icon: Users },
+    { href: "/admin/arrendatarios", label: "Arrendatarios", icon: Users },
+    { href: "/admin/propiedades", label: "Propiedades", icon: Building2 },
+    { href: "/admin/contratos", label: "Contratos", icon: ClipboardCheck },
+    { href: "/admin/cuentas-servicios", label: "Cuentas de Servicios", icon: CreditCard },
     {
       href: "/admin/liquidaciones",
       label: "Aprobación Liquidaciones",
@@ -65,6 +65,7 @@ const NAV_POR_ROL: Record<Rol, NavItem[]> = {
       label: "Generar Liquidaciones",
       icon: Receipt,
     },
+    { href: "/admin/cuentas-servicios", label: "Cuentas de Servicios", icon: CreditCard },
   ],
   [ROLES.PROPIETARIO]: [
     { href: "/propietario", label: "Resumen", icon: LayoutDashboard },

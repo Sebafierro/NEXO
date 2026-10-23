@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { FileScan, Receipt, Scale } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { requerirRol } from "@/lib/auth";
+import { exigirRol } from "@/lib/auth";
 import { ROLES } from "@/lib/roles";
 import { obtenerResumenCartera } from "@/lib/cartera";
 import { formatearMoneda } from "@/lib/format";
@@ -44,7 +44,7 @@ const ACCESOS_RAPIDOS = [
 ];
 
 export default async function EjecutivoDashboardPage() {
-  await requerirRol(ROLES.EJECUTIVO, ROLES.ADMINISTRADOR);
+  await exigirRol(ROLES.EJECUTIVO, ROLES.ADMINISTRADOR);
 
   const supabase = await createClient();
   const resumen = await obtenerResumenCartera(supabase);
