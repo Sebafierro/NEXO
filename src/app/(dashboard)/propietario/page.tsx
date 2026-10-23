@@ -1,7 +1,7 @@
 import { StatCard } from "@/components/dashboard/stat-card";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { requerirRol } from "@/lib/auth";
+import { exigirRol } from "@/lib/auth";
 import { ROLES } from "@/lib/roles";
 import { formatearMoneda } from "@/lib/format";
 
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function PropietarioDashboardPage() {
-  await requerirRol(ROLES.PROPIETARIO, ROLES.ADMINISTRADOR);
+  await exigirRol(ROLES.PROPIETARIO, ROLES.ADMINISTRADOR);
 
   const supabase = await createClient();
 
@@ -39,8 +39,8 @@ export default async function PropietarioDashboardPage() {
 
   const obligaciones = obligacionesRes.data ?? [];
   const alDia = obligaciones.filter((o) => o.estado === "PAGADA").length;
-  const pendientes = obligaciones.filter((o) => o.estado === "PENDIENTE").length;
-  const atrasadas = obligaciones.filter((o) => o.estado === "ATRASADA").length;
+  const pendientes = obligaciones.filter((o) => o.estado === "PENDIENTE" || o.estado === "PAGO_PARCIAL").length;
+  const atrasadas = obligaciones.filter((o) => o.estado === "VENCIDA" || o.estado === "ATRASADA").length;
   const cobradoMes = (pagosRes.data ?? []).reduce((acc, p) => acc + Number(p.monto), 0);
 
   // TODO: Comentarios de los locales y KPI de rentabilidad neta (arriendo - gastos

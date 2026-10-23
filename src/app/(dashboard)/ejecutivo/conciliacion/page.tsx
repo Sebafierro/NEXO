@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { requerirRol } from "@/lib/auth";
+import { exigirRol } from "@/lib/auth";
 import { ROLES } from "@/lib/roles";
-import { formatearFecha, formatearMoneda } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
+import { calcularSemaforo } from "@/lib/conciliacion";
+import { hayMora } from "@/lib/obligaciones";
+import type { EstadoObligacion } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ConciliacionTabla, type FilaConciliacion } from "./conciliacion-tabla";
+import { PagosPendientes } from "./pagos-pendientes";
+import { GenerarObligaciones } from "./generar-obligaciones";
+import { urlFirmada } from "@/lib/storage";
 
 export const metadata: Metadata = {
   title: "Conciliación de pagos",
@@ -20,34 +17,99 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-type ObligacionConPago = {
+type ObligacionCruda = {
   id: string;
+  contrato_id: string;
   tipo: string;
   monto: number;
-  fecha_vencimiento: string;
+  monto_pagado: number;
+  saldo: number;
   estado: string;
-  pagos: { id: string; monto: number; fecha_pago: string; metodo_pago: string | null }[];
+  fecha_vencimiento: string;
+  contratos: { propiedades: { nombre: string | null } | null } | null;
 };
 
 export default async function EjecutivoConciliacionPage() {
-  await requerirRol(ROLES.EJECUTIVO, ROLES.ADMINISTRADOR);
+  await exigirRol(ROLES.EJECUTIVO, ROLES.ADMINISTRADOR);
 
   const supabase = await createClient();
+  const hoy = new Date();
 
-  // Obligaciones del mes en curso con sus pagos aplicados: base para el cruce.
-  const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  const { data: pagosPendientes } = await supabase
+    .from("pagos")
+    .select("id, monto, fecha_pago, metodo_pago, referencia, estado_validacion, documento_id, documentos(archivo_url, nombre), obligaciones(id, tipo, periodo, contrato_id)")
+    .eq("estado_validacion", "PENDIENTE")
+    .order("fecha_pago", { ascending: false });
+
+  // El bucket es privado: se firma una URL temporal para cada comprobante.
+  const pagosPendientesConUrl = await Promise.all(
+    (pagosPendientes ?? []).map(async (p) => {
+      const doc = p.documentos as { archivo_url?: string | null; nombre?: string | null } | null;
+      const url = await urlFirmada(supabase, doc?.archivo_url ?? null);
+      return { ...p, documentos: doc ? { ...doc, archivo_url: url } : null };
+    }),
+  );
+
+  // Obligaciones del mes en curso + cualquier saldo vencido de meses previos.
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
 
   const { data, error } = await supabase
     .from("obligaciones")
-    .select("id, tipo, monto, fecha_vencimiento, estado, pagos(monto, fecha_pago, metodo_pago)")
-    .gte("fecha_vencimiento", inicioMes)
+    .select(
+      "id, contrato_id, tipo, monto, monto_pagado, saldo, estado, fecha_vencimiento, contratos(propiedades(nombre))"
+    )
+    .or(`fecha_vencimiento.gte.${inicioMes},and(saldo.gt.0,fecha_vencimiento.lt.${inicioMes})`)
     .order("fecha_vencimiento", { ascending: true })
-    .limit(20);
+    .limit(100);
 
-  const obligaciones = (data ?? []) as unknown as ObligacionConPago[];
+  const crudas = (data ?? []) as unknown as ObligacionCruda[];
 
-  const saldo = (o: ObligacionConPago) =>
-    Number(o.monto) - o.pagos.reduce((acc, p) => acc + Number(p.monto), 0);
+  // Semaforo por contrato (M2-7): se agrupan las obligaciones de cada contrato
+  // y se calcula con el motor de src/lib/conciliacion.ts.
+  const porContrato = new Map<string, ObligacionCruda[]>();
+  for (const o of crudas) {
+    const lista = porContrato.get(o.contrato_id) ?? [];
+    lista.push(o);
+    porContrato.set(o.contrato_id, lista);
+  }
+  const semaforoPorContrato = new Map(
+    [...porContrato.entries()].map(([contratoId, obligaciones]) => [
+      contratoId,
+      calcularSemaforo(
+        obligaciones.map((o) => ({
+          monto: Number(o.monto),
+          montoPagado: Number(o.monto_pagado),
+          estado: o.estado as EstadoObligacion,
+          fechaVencimiento: o.fecha_vencimiento,
+        })),
+        hoy
+      ),
+    ])
+  );
+
+  const filas: FilaConciliacion[] = crudas.map((o) => {
+    const saldo = Number(o.saldo);
+    const enMora = hayMora(
+      {
+        estado: o.estado as EstadoObligacion,
+        fechaVencimiento: o.fecha_vencimiento,
+        saldo,
+      },
+      hoy
+    );
+    return {
+      id: o.id,
+      tipo: o.tipo,
+      monto: Number(o.monto),
+      montoPagado: Number(o.monto_pagado),
+      saldo,
+      // Defensiva: si el cron no corrio, la mora se refleja al leer.
+      estado: enMora && o.estado !== "VENCIDA" && o.estado !== "PAGADA" ? "VENCIDA" : o.estado,
+      fechaVencimiento: o.fecha_vencimiento,
+      propiedad: o.contratos?.propiedades?.nombre ?? null,
+      semaforo: semaforoPorContrato.get(o.contrato_id) ?? "VERDE",
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -60,59 +122,37 @@ export default async function EjecutivoConciliacionPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Pagos por conciliar</CardTitle>
+          <CardTitle>Generar obligaciones del mes</CardTitle>
           <CardDescription>
-            Obligaciones del mes en curso con su saldo pendiente.
+            Crea las obligaciones (arriendo + servicios) de los contratos vigentes para el
+            periodo. Es idempotente: no duplica las existentes.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {error || obligaciones.length === 0 ? (
+          <GenerarObligaciones />
+        </CardContent>
+      </Card>
+
+      <PagosPendientes pagos={pagosPendientesConUrl as Parameters<typeof PagosPendientes>[0]["pagos"]} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pagos por conciliar</CardTitle>
+          <CardDescription>
+            Obligaciones del mes en curso y saldos vencidos. Registra pagos y concilia:
+            el saldo y el estado se recalculan automáticamente.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {error ? (
+            <p className="py-8 text-center text-sm text-red-500">{error.message}</p>
+          ) : filas.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              {error?.message ?? "No hay obligaciones en el periodo actual."}
+              No hay obligaciones para conciliar en este periodo.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Obligación</TableHead>
-                  <TableHead>Vence</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {obligaciones.map((o) => (
-                  <TableRow key={o.id}>
-                    <TableCell className="font-medium">
-                      {o.tipo.toLowerCase().replaceAll("_", " ")}
-                      <p className="text-xs font-normal text-muted-foreground">
-                        {o.pagos.length === 0
-                          ? "Sin pagos aplicados"
-                          : `${o.pagos.length} pago(s): ${o.pagos
-                              .map((p) => formatearFecha(p.fecha_pago))
-                              .join(", ")}`}
-                      </p>
-                    </TableCell>
-                    <TableCell>{formatearFecha(o.fecha_vencimiento)}</TableCell>
-                    <TableCell>
-                      <Badge variant={o.estado === "PAGADA" ? "outline" : "destructive"}>
-                        {o.estado.toLowerCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{formatearMoneda(Number(o.monto))}</TableCell>
-                    <TableCell className="text-right">{formatearMoneda(saldo(o))}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <ConciliacionTabla data={filas} />
           )}
-          <p className="mt-3 text-xs text-muted-foreground">
-            {/* TODO: registrar un pago con formulario (insert en public.pagos) y una
-                acción "conciliado" que marque la obligación como PAGADA. */}
-            {/* TODO: marcar automáticamente como ATRASADA toda obligación vencida
-                (ver TODO de negocio en supabase/02_roles_extension.sql). */}
-          </p>
         </CardContent>
       </Card>
     </div>

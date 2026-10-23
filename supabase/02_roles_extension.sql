@@ -296,38 +296,18 @@ create policy "respaldos_arrendatario_acceso"
 -- ----------------------------------------------------------------------------
 -- 6. TODO DE NEGOCIO PENDIENTE
 -- ----------------------------------------------------------------------------
--- * public.liquidaciones (base de /admin/liquidaciones, /ejecutivo/liquidaciones y
---   /propietario/liquidaciones). Diseño tentativo:
---     create table public.liquidaciones (
---       id              uuid primary key default gen_random_uuid(),
---       periodo         date not null,                       -- primer día del mes
---       propietario_id  uuid not null references public.propietarios (id) on delete restrict,
---       arriendo_bruto  numeric(12,2) not null default 0,
---       gastos          numeric(12,2) not null default 0,     -- gastos comunes + servicios
---       comision        numeric(12,2) not null default 0,     -- comisión NEXO
---       neto            numeric(12,2) not null default 0,     -- generado: bruto - gastos - comision
---       estado          text not null default 'GENERADA'
---                       check (estado in ('GENERADA','APROBADA','RECHAZADA','PAGADA')),
---       generado_por    uuid references public.usuarios (id) on delete set null,
---       aprobado_por    uuid references public.usuarios (id) on delete set null,
---       observaciones   text,
---       creado_en       timestamptz not null default now(),
---       constraint liquidaciones_periodo_propietario unique (periodo, propietario_id)
---     );
---   + RLS: ADMINISTRADOR todo; EJECUTIVO insert/update (no approve); PROPIETARIO
---     select de las propias.
+-- (Actualizado: liquidaciones y conciliaciones ya existen en 03_mvp.sql; el
+--  marcado automatico de mora y la generacion mensual de obligaciones estan en
+--  05_ciclo_financiero.sql.)
 --
--- * Trigger/función que marque obligaciones como ATRASADA al vencer
---   (hoy las actualiza el EJECUTIVO manualmente en /ejecutivo/conciliacion).
---
--- * Conciliación: tabla opcional public.conciliaciones
---   (pago_id, obligacion_id, monto_aplicado, diferencia, resuelto_por, resuelto_en)
---   para dejar rastro cuando el pago no calza exactamente con la obligación.
+-- * Liquidaciones: la tabla y su RLS existen (03/04); falta la generacion del
+--   cierre mensual (neto = bruto - comision - reparaciones + reembolsos) y los
+--   parametros de comision/gastos por contrato (M4).
 --
 -- * Cola de OCR: public.extracciones_documento ya sirve de cola; falta el worker
---   (Edge Function o cron) que escriba los campos extraídos en la entidad destino.
+--   (Edge Function o cron) que escriba los campos extraidos en la entidad destino.
 --
 -- * Comisiones y gastos comunes parametrizables por contrato antes de poder
---   calcular el neto de la liquidación.
+--   calcular el neto de la liquidacion.
 
 commit;

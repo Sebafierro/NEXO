@@ -1,53 +1,29 @@
-// Tipos de filas de la base de datos (espejo de supabase/backend_setup.sql)
-// TODO: en el futuro, generar con `supabase gen types typescript` para tener
-// la tipificación completa del schema.
-
+// Tipos derivados de la base de datos (Database.types).
+import type { Database } from "./supabase/database.types";
 import type { Rol } from "./roles";
+
+type TRow<T extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][T]["Row"];
 
 export type EstadoPropiedad = "DISPONIBLE" | "ARRENDADA" | "EN_MANTENIMIENTO" | "INACTIVA";
 
-export type EstadoObligacion = "PENDIENTE" | "PAGADA" | "ATRASADA";
+// Estados del CHECK obligaciones_estado_check (03_mvp.sql).
+// VENCIDA es el estado canonico de mora; ATRASADA es legado (se normaliza en
+// 05_ciclo_financiero.sql) y solo se tolera en lecturas defensivas.
+export type EstadoObligacion =
+  | "PENDIENTE"
+  | "PAGO_PARCIAL"
+  | "PAGADA"
+  | "VENCIDA"
+  | "ATRASADA"
+  | "EN_REVISION";
 
-export type Usuario = {
-  id: string;
-  email: string;
-  nombres: string | null;
-  apellidos: string | null;
-  telefono: string | null;
+export type Usuario = Omit<TRow<"usuarios">, "rol"> & {
   rol: Rol | string;
 };
 
-export type Propiedad = {
-  id: string;
-  propietario_id: string;
-  nombre: string | null;
-  direccion: string;
-  comuna: string | null;
-  tipo: string;
-  estado: EstadoPropiedad;
-  valor_arriendo: number;
-};
+export type Propiedad = TRow<"propiedades">;
 
-export type Propietario = {
-  id: string;
-  user_id: string | null;
-  rut: string | null;
-  nombres: string;
-  apellidos: string;
-  telefono: string | null;
-  email: string | null;
-  estado: "ACTIVO" | "INACTIVO";
-};
+export type Propietario = TRow<"propietarios">;
 
-// El vínculo user_id lo agrega supabase/02_roles_extension.sql y es lo que
-// permite que el portal del ARRENDATARIO vea sus obligaciones y pagos vía RLS.
-export type Arrendatario = {
-  id: string;
-  user_id: string | null;
-  rut: string | null;
-  nombres: string;
-  apellidos: string;
-  telefono: string | null;
-  email: string | null;
-  estado: "ACTIVO" | "INACTIVO";
-};
+export type Arrendatario = TRow<"arrendatarios">;

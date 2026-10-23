@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { requerirRol } from "@/lib/auth";
+import { exigirRol } from "@/lib/auth";
 import { ROLES } from "@/lib/roles";
 import { obtenerResumenCartera } from "@/lib/cartera";
 import { formatearFecha, formatearMoneda } from "@/lib/format";
@@ -49,22 +49,40 @@ type ExtraccionPendiente = {
   } | null;
 };
 
+type LiquidacionPendiente = {
+  id: string;
+  periodo: string;
+  neto: number;
+  propietarios: { nombres: string; apellidos: string } | null;
+  contratos: { propiedades: { nombre: string | null } | null } | null;
+};
+
 export default async function AdminDashboardPage() {
   // Defensa extra por si se accede directo a la URL (el Proxy ya lo bloquea).
-  await requerirRol(ROLES.ADMINISTRADOR);
+  await exigirRol(ROLES.ADMINISTRADOR);
 
   const supabase = await createClient();
 
-  const [resumen, alertasRes, documentosRes] = await Promise.all([
+  const [resumen, alertasRes, liquidacionesRes, documentosRes] = await Promise.all([
     obtenerResumenCartera(supabase),
     // Alertas: obligaciones vencidas con su propiedad para contextualizar.
+    // Se acepta ATRASADA por compatibilidad con datos legados.
     supabase
       .from("obligaciones")
       .select(
         "id, monto, tipo, fecha_vencimiento, contratos(propiedades(nombre, direccion))",
       )
-      .eq("estado", "ATRASADA")
+      .in("estado", ["VENCIDA", "ATRASADA"])
       .order("fecha_vencimiento", { ascending: true })
+      .limit(6),
+    // Liquidaciones generadas y pendientes de aprobacion (tabla public.liquidaciones).
+    supabase
+      .from("liquidaciones")
+      .select(
+        "id, periodo, neto, estado, propietarios(nombres, apellidos), contratos(propiedades(nombre))"
+      )
+      .eq("estado", "GENERADA")
+      .order("creado_en", { ascending: false })
       .limit(6),
     // Alertas: documentos cargados cuya extracción OCR sigue pendiente.
     supabase
@@ -90,6 +108,8 @@ export default async function AdminDashboardPage() {
   } = resumen;
 
   const alertas = (alertasRes.data ?? []) as unknown as ObligacionVencida[];
+  const liquidaciones = (liquidacionesRes.data ??
+    []) as unknown as LiquidacionPendiente[];
   const documentosPendientes = (documentosRes.data ??
     []) as unknown as ExtraccionPendiente[];
 
@@ -145,21 +165,43 @@ export default async function AdminDashboardPage() {
         />
       </div>
 
-      {/* TODO: reemplazar por liquidaciones reales una vez exista la tabla
-          public.liquidaciones (ver bloque de TODOs en supabase/02_roles_extension.sql). */}
       <Card>
         <CardHeader>
           <CardTitle>Liquidaciones por aprobar</CardTitle>
           <CardDescription>
-            Pendiente de implementación: la tabla de liquidaciones aún no
-            existe.
+            Liquidaciones generadas por el EJECUTIVO pendientes de aprobación.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Aquí irá el listado de liquidaciones generadas por el EJECUTIVO y
-            pendientes de aprobación del administrador.
-          </p>
+          {liquidaciones.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No hay liquidaciones pendientes de aprobación.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {liquidaciones.map((l) => (
+                <li
+                  key={l.id}
+                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {l.contratos?.propiedades?.nombre ?? "Sin propiedad"} ·{" "}
+                      {formatearFecha(l.periodo)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {l.propietarios
+                        ? `${l.propietarios.nombres} ${l.propietarios.apellidos}`
+                        : "Sin propietario"}
+                    </p>
+                  </div>
+                  <span className="whitespace-nowrap text-sm font-medium">
+                    {formatearMoneda(Number(l.neto))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

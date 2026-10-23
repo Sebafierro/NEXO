@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { requerirRol } from "@/lib/auth";
+import { exigirRol } from "@/lib/auth";
 import { ROLES } from "@/lib/roles";
 import { formatearFecha, formatearMoneda } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +40,7 @@ type ObligacionArrendatario = {
 };
 
 export default async function ArrendatarioPortalPage() {
-  await requerirRol(ROLES.ARRENDATARIO, ROLES.ADMINISTRADOR);
+  await exigirRol(ROLES.ARRENDATARIO, ROLES.ADMINISTRADOR);
 
   const supabase = await createClient();
 
@@ -49,16 +49,17 @@ export default async function ArrendatarioPortalPage() {
   const { data, error } = await supabase
     .from("obligaciones")
     .select(
-      "id, tipo, descripcion, monto, fecha_vencimiento, estado, contratos(valor_arriendo, propiedades(direccion, comuna))"
+      "id, tipo, descripcion, monto, monto_pagado, saldo, fecha_vencimiento, estado, contratos(valor_arriendo, propiedades(direccion, comuna))"
     )
-    .in("estado", ["PENDIENTE", "ATRASADA"])
+    // Mora canonica: VENCIDA (ATRASADA solo como dato legado).
+    .in("estado", ["PENDIENTE", "PAGO_PARCIAL", "VENCIDA", "ATRASADA"])
     .order("fecha_vencimiento", { ascending: true });
 
   const obligaciones = (data ?? []) as unknown as ObligacionArrendatario[];
 
-  const totalAPagar = obligaciones.reduce((acc, o) => acc + Number(o.monto), 0);
-  const atrasadas = obligaciones.filter((o) => o.estado === "ATRASADA");
-  const montoAtrasado = atrasadas.reduce((acc, o) => acc + Number(o.monto), 0);
+  const totalAPagar = obligaciones.reduce((acc, o) => acc + Number((o as any).saldo ?? (o as any).monto ?? 0), 0);
+  const atrasadas = obligaciones.filter((o) => o.estado === "VENCIDA" || o.estado === "ATRASADA");
+  const montoAtrasado = atrasadas.reduce((acc, o) => acc + Number((o as any).saldo ?? (o as any).monto ?? 0), 0);
   const fechas = obligaciones.map((o) => o.fecha_vencimiento).sort();
   const fechaLimite = fechas.length > 0 ? fechas[fechas.length - 1] : null;
   const diasRestantes = fechaLimite
@@ -154,11 +155,11 @@ export default async function ArrendatarioPortalPage() {
                     </TableCell>
                     <TableCell>{formatearFecha(o.fecha_vencimiento)}</TableCell>
                     <TableCell>
-                      <Badge variant={o.estado === "ATRASADA" ? "destructive" : "secondary"}>
-                        {o.estado === "ATRASADA" ? "Atrasada" : "Pendiente"}
+                      <Badge variant={o.estado === "VENCIDA" || o.estado === "ATRASADA" ? "destructive" : "secondary"}>
+                        {o.estado === "VENCIDA" || o.estado === "ATRASADA" ? "Vencida" : "Pendiente"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">{formatearMoneda(Number(o.monto))}</TableCell>
+                    <TableCell className="text-right">{formatearMoneda(Number((o as any).saldo ?? o.monto ?? 0))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

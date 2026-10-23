@@ -58,7 +58,7 @@ export async function obtenerSesion(): Promise<Sesion> {
 
 // Guarda de página: redirige a /login sin sesión y al dashboard del rol
 // cuando el usuario no tiene permiso sobre la ruta.
-export async function requerirRol(...permitidos: Rol[]): Promise<Sesion> {
+export async function exigirRol(...permitidos: Rol[]): Promise<Sesion> {
   const sesion = await obtenerSesion();
 
   if (!permitidos.includes(sesion.rol)) {
