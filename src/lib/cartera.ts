@@ -40,7 +40,7 @@ export async function obtenerResumenCartera(supabase: SupabaseClient): Promise<R
         .eq("estado", "VIGENTE"),
       supabase
         .from("obligaciones")
-        .select("id, monto, contrato_id")
+        .select("id, monto, monto_pagado, saldo, contrato_id, estado, fecha_vencimiento")
         // Mora = no pagada con saldo y fecha ya vencida. Se acepta ATRASADA por
         // compatibilidad con datos legados (se normaliza a VENCIDA en
         // 05_ciclo_financiero.sql).
@@ -52,13 +52,18 @@ export async function obtenerResumenCartera(supabase: SupabaseClient): Promise<R
         .eq("estado", "PENDIENTE")
         .gte("fecha_vencimiento", hoyISO)
         .lte("fecha_vencimiento", finSemanaISO),
-      supabase.from("pagos").select("monto").gte("fecha_pago", inicioMes),
+      supabase.from("pagos").select("monto, estado_validacion").gte("fecha_pago", inicioMes),
     ]);
 
   const propiedades = propiedadesRes.data ?? [];
-  const mora = moraRes.data ?? [];
+  const mora = (moraRes.data ?? []).filter((o: any) => {
+    const saldo = o.saldo !== null && o.saldo !== undefined
+      ? Number(o.saldo)
+      : Math.max(0, Number(o.monto || 0) - Number(o.monto_pagado || 0));
+    return saldo > 0;
+  });
   const contratosVigentes = contratosRes.count ?? 0;
-  const contratosConMora = new Set(mora.map((o) => o.contrato_id)).size;
+  const contratosConMora = new Set(mora.map((o: any) => o.contrato_id)).size;
 
   return {
     totalPropiedades: propiedades.length,
@@ -70,7 +75,14 @@ export async function obtenerResumenCartera(supabase: SupabaseClient): Promise<R
     alDia: Math.max(0, contratosVigentes - contratosConMora),
     porVencer: porVencerRes.count ?? 0,
     enMora: mora.length,
-    moraMonto: mora.reduce((acc, o) => acc + Number(o.monto), 0),
-    ingresosMes: (pagosMesRes.data ?? []).reduce((acc, p) => acc + Number(p.monto), 0),
+    moraMonto: mora.reduce((acc, o: any) => {
+      const saldo = o.saldo !== null && o.saldo !== undefined
+        ? Number(o.saldo)
+        : Math.max(0, Number(o.monto || 0) - Number(o.monto_pagado || 0));
+      return acc + saldo;
+    }, 0),
+    ingresosMes: (pagosMesRes.data ?? [])
+      .filter((p: any) => p.estado_validacion !== "RECHAZADO")
+      .reduce((acc, p) => acc + Number(p.monto), 0),
   };
 }

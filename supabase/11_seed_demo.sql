@@ -6,24 +6,35 @@
 --
 -- Ejecutar en: Supabase Dashboard > SQL Editor (despues de 10_*.sql)
 --
--- Que crea:
---   1. Cuentas de login (auth.users) para los 4 roles del sistema, con
---      app_metadata.rol correcto. Los triggers on_auth_user_rol_inyectar y
---      on_auth_usuario_sincronizar crean public.usuarios y completan el rol.
---   2. Propietario y Arrendatario vinculados a sus cuentas (user_id).
---   3. Propiedades, contrato VIGENTE, cuentas de servicios (con monto_mensual).
---   4. Obligaciones del periodo actual (ARRIENDO + servicios) para M2/M4.
---   5. Documento OCR en estado SIN_ASIGNAR (entidad_tipo='SIN_ASIGNAR') para M3.
+-- Que crea (dataset minimo, cada registro tiene un proposito de demo):
+--   1. Cuentas de login (auth.users) para los 4 roles, con app_metadata.rol.
+--      Los triggers on_auth_user_rol_inyectar y on_auth_usuario_sincronizar
+--      crean public.usuarios y completan el rol.
+--   2. Propietario Carlos Perez y arrendataria Maria Gonzalez vinculados a login.
+--      Arrendatario Diego Soto (sin cuenta) para el escenario M4.
+--   3. Tres propiedades del mismo dueno:
+--        Depto Los Leones  ARRENDADA   -> M1/M2/M3 (cartera con mora)
+--        Casa Villa Frei   ARRENDADA   -> M4 (periodo anterior en verde)
+--        Oficina Huerfanos DISPONIBLE  -> M1 alta de contrato
+--   4. Contratos VIGENTE, cuentas de servicios con monto_mensual.
+--   5. Obligaciones: Depto (actual PENDIENTE + mes anterior VENCIDA) y Casa
+--      (solo mes anterior PAGADA, sin mes actual) para que generar_obligaciones
+--      del periodo vigente cree filas visibles.
+--   6. Pago PENDIENTE de Maria (comprobante) para conciliar en M2.
+--      Pago VALIDADO + conciliacion de Diego para el cierre M4.
+--   7. Boleta OCR SIN_ASIGNAR + extraccion EXTRAIDA para M3.
 --
 -- Credenciales (password de TODAS las cuentas): NexoDemo2024!
---   admin@nexo.test         -> ADMINISTRADOR
---   ejecutivo@nexo.test     -> EJECUTIVO
---   propietario.test@nexo.cl-> PROPIETARIO
+--   admin@nexo.test          -> ADMINISTRADOR
+--   ejecutivo@nexo.test      -> EJECUTIVO
+--   propietario.test@nexo.cl -> PROPIETARIO
 --   arrendatario.test@nexo.cl-> ARRENDATARIO
 --
--- NOTA: el OCR real requiere el microservicio ocr-service en :8080. El documento
--- de ejemplo se deja en estado PENDIENTE/SIN_ASIGNAR para probar el flujo M3
--- completo desde la UI (subir/asignar/confirmar).
+-- Restablecer escenario (borra SOLO UUIDs/contratos de este seed):
+--   supabase/12_reset_seed_demo.sql y luego volver a ejecutar este archivo.
+--
+-- NOTA: el OCR real requiere ocr-service en :8080. La boleta de ejemplo queda
+-- PENDIENTE/SIN_ASIGNAR para asignar y confirmar desde /ejecutivo/documentos.
 -- ============================================================================
 
 begin;
@@ -172,7 +183,7 @@ select pg_temp.seed_auth_user(
   'María', 'González', 'NexoDemo2024!');
 
 -- ----------------------------------------------------------------------------
--- 2. PROPIETARIO / ARRENDATARIO vinculados a sus cuentas
+-- 2. PROPIETARIO / ARRENDATARIOS
 -- ----------------------------------------------------------------------------
 insert into public.propietarios (
   id, user_id, rut, nombres, apellidos, telefono, email, direccion, estado
@@ -180,13 +191,14 @@ insert into public.propietarios (
   '11111111-1111-1111-1111-111111111111',
   'aaaaaaaa-0000-0000-0000-000000000003',
   '11111111-1', 'Carlos', 'Pérez', '+56911111111',
-  'propietario.test@nexo.cl', 'Av. Providencia 1000', 'ACTIVO'
+  'propietario.test@nexo.cl', 'Av. Providencia 1000, oficina 402', 'ACTIVO'
 )
 on conflict (id) do update
   set user_id = excluded.user_id,
       nombres = excluded.nombres,
       apellidos = excluded.apellidos,
       email = excluded.email,
+      direccion = excluded.direccion,
       estado = excluded.estado;
 
 insert into public.arrendatarios (
@@ -195,56 +207,87 @@ insert into public.arrendatarios (
   '22222222-2222-2222-2222-222222222222',
   'aaaaaaaa-0000-0000-0000-000000000004',
   '22222222-2', 'María', 'González', '+56922222222',
-  'arrendatario.test@nexo.cl', 'Calle Ficticia 456', 'ACTIVO'
+  'arrendatario.test@nexo.cl', 'Av. Los Leones 1450, depto 603', 'ACTIVO'
 )
 on conflict (id) do update
   set user_id = excluded.user_id,
       nombres = excluded.nombres,
       apellidos = excluded.apellidos,
       email = excluded.email,
+      direccion = excluded.direccion,
+      estado = excluded.estado;
+
+-- Sin cuenta de login: se usa solo en el contrato listo para liquidar (M4).
+insert into public.arrendatarios (
+  id, user_id, rut, nombres, apellidos, telefono, email, direccion, estado
+) values (
+  '22222222-2222-2222-2222-222222222223',
+  null,
+  '17333444-5', 'Diego', 'Soto', '+56933333333',
+  'diego.soto.demo@nexo.test', 'Pasaje Oriente 890, Ñuñoa', 'ACTIVO'
+)
+on conflict (id) do update
+  set nombres = excluded.nombres,
+      apellidos = excluded.apellidos,
+      email = excluded.email,
+      direccion = excluded.direccion,
       estado = excluded.estado;
 
 -- ----------------------------------------------------------------------------
--- 3. PROPIEDAD (2 para cubrir contratos multiples) y arrendatario 2
+-- 3. PROPIEDADES
 -- ----------------------------------------------------------------------------
 insert into public.propiedades (
   id, propietario_id, nombre, direccion, comuna, region, tipo, estado, valor_arriendo
-) values (
-  '33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111',
-  'Depto Test', 'Calle Ficticia 456', 'Santiago', 'Metropolitana',
-  'DEPARTAMENTO', 'ARRENDADA', 500000
-)
+) values
+  (
+    '33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111',
+    'Depto Los Leones', 'Av. Los Leones 1450, depto 603', 'Providencia', 'Metropolitana',
+    'DEPARTAMENTO', 'ARRENDADA', 500000
+  ),
+  (
+    '33333333-3333-3333-3333-333333333334', '11111111-1111-1111-1111-111111111111',
+    'Casa Villa Frei', 'Pasaje Oriente 890', 'Ñuñoa', 'Metropolitana',
+    'CASA', 'ARRENDADA', 800000
+  ),
+  (
+    '33333333-3333-3333-3333-333333333335', '11111111-1111-1111-1111-111111111111',
+    'Oficina Huérfanos', 'Huérfanos 1160, oficina 8', 'Santiago', 'Metropolitana',
+    'OFICINA', 'DISPONIBLE', 450000
+  )
 on conflict (id) do update
   set propietario_id = excluded.propietario_id,
-      estado = excluded.estado,
-      valor_arriendo = excluded.valor_arriendo;
-
-insert into public.propiedades (
-  id, propietario_id, nombre, direccion, comuna, region, tipo, estado, valor_arriendo
-) values (
-  '33333333-3333-3333-3333-333333333334', '11111111-1111-1111-1111-111111111111',
-  'Casa Test', 'Pasaje Ficticio 789', 'Ñuñoa', 'Metropolitana',
-  'CASA', 'DISPONIBLE', 800000
-)
-on conflict (id) do update
-  set propietario_id = excluded.propietario_id,
+      nombre = excluded.nombre,
+      direccion = excluded.direccion,
+      comuna = excluded.comuna,
+      tipo = excluded.tipo,
       estado = excluded.estado,
       valor_arriendo = excluded.valor_arriendo;
 
 -- ----------------------------------------------------------------------------
--- 4. CONTRATO VIGENTE (M1/M2/M4) - arriendo 500000, comision 10%, vence dia 5
+-- 4. CONTRATOS VIGENTE
+--    Depto: arriendo 500000, comision 10%, vence dia 5  (M1/M2/M3)
+--    Casa:  arriendo 800000, comision 8%,  vence dia 5  (M4)
 -- ----------------------------------------------------------------------------
 insert into public.contratos (
   id, propiedad_id, arrendatario_id, fecha_inicio, fecha_termino,
   valor_arriendo, garantia_meses, estado, dia_vencimiento, comision_porcentaje
-) values (
-  '44444444-4444-4444-4444-444444444444',
-  '33333333-3333-3333-3333-333333333333',
-  '22222222-2222-2222-2222-222222222222',
-  (date_trunc('month', current_date) - interval '3 months')::date,
-  (date_trunc('month', current_date) + interval '9 months')::date,
-  500000, 1, 'VIGENTE', 5, 10
-)
+) values
+  (
+    '44444444-4444-4444-4444-444444444444',
+    '33333333-3333-3333-3333-333333333333',
+    '22222222-2222-2222-2222-222222222222',
+    (date_trunc('month', current_date) - interval '3 months')::date,
+    (date_trunc('month', current_date) + interval '9 months')::date,
+    500000, 1, 'VIGENTE', 5, 10
+  ),
+  (
+    '44444444-4444-4444-4444-444444444445',
+    '33333333-3333-3333-3333-333333333334',
+    '22222222-2222-2222-2222-222222222223',
+    (date_trunc('month', current_date) - interval '6 months')::date,
+    (date_trunc('month', current_date) + interval '6 months')::date,
+    800000, 1, 'VIGENTE', 5, 8
+  )
 on conflict (id) do update
   set estado = excluded.estado,
       valor_arriendo = excluded.valor_arriendo,
@@ -252,128 +295,270 @@ on conflict (id) do update
       dia_vencimiento = excluded.dia_vencimiento;
 
 -- ----------------------------------------------------------------------------
--- 5. CUENTAS DE SERVICIOS (con monto_mensual para que generen obligacion)
+-- 5. CUENTAS DE SERVICIOS (monto_mensual => generan obligacion en M2)
 -- ----------------------------------------------------------------------------
 insert into public.cuentas_servicios (
   id, propiedad_id, tipo_servicio, empresa, numero_cliente, numero_cuenta, activo, monto_mensual
-) values (
-  '55555555-5555-5555-5555-555555555555',
-  '33333333-3333-3333-3333-333333333333',
-  'AGUA', 'EmpresaTest', 'CLI-TEST-001', 'CTA-TEST-001', true, 15000
-)
+) values
+  (
+    '55555555-5555-5555-5555-555555555555',
+    '33333333-3333-3333-3333-333333333333',
+    'AGUA', 'Aguas Andinas', 'CLI-LEONES-AGUA', 'CTA-LEONES-AGUA', true, 15000
+  ),
+  (
+    '55555555-5555-5555-5555-555555555556',
+    '33333333-3333-3333-3333-333333333333',
+    'ELECTRICIDAD', 'Enel', 'CLI-LEONES-ENEL', 'CTA-LEONES-ENEL', true, 25000
+  ),
+  (
+    '55555555-5555-5555-5555-555555555557',
+    '33333333-3333-3333-3333-333333333334',
+    'GAS', 'Metrogas', 'CLI-FREI-GAS', 'CTA-FREI-GAS', true, 18000
+  )
 on conflict (id) do update
   set numero_cliente = excluded.numero_cliente,
-      activo = excluded.activo,
-      monto_mensual = excluded.monto_mensual;
-
-insert into public.cuentas_servicios (
-  id, propiedad_id, tipo_servicio, empresa, numero_cliente, numero_cuenta, activo, monto_mensual
-) values (
-  '55555555-5555-5555-5555-555555555556',
-  '33333333-3333-3333-3333-333333333333',
-  'ELECTRICIDAD', 'EmpresaTest', 'CLI-TEST-002', 'CTA-TEST-002', true, 25000
-)
-on conflict (id) do update
-  set numero_cliente = excluded.numero_cliente,
+      empresa = excluded.empresa,
       activo = excluded.activo,
       monto_mensual = excluded.monto_mensual;
 
 -- ----------------------------------------------------------------------------
--- 6. OBLIGACIONES DEL PERIODO ACTUAL (idempotentes por periodo+tipo+contrato)
---    ARRIENDO + servicios. Se usan en M2 (conciliacion) y M4 (liquidaciones).
+-- 6. OBLIGACIONES (idempotentes por contrato+tipo+periodo)
+--    No se pisan estados si la fila ya existe (preserva el avance de la demo).
+--    saldo es columna GENERADA: no insertar.
 -- ----------------------------------------------------------------------------
 do $$
 declare
-  v_periodo date := date_trunc('month', current_date)::date;
-  v_fin_mes date := (date_trunc('month', current_date) + interval '1 month - 1 day')::date;
-  v_contrato uuid := '44444444-4444-4444-4444-444444444444';
-  v_propiedad uuid := '33333333-3333-3333-3333-333333333333';
+  v_periodo     date := date_trunc('month', current_date)::date;
+  v_fin_mes     date := (date_trunc('month', current_date) + interval '1 month - 1 day')::date;
+  v_prev        date := (date_trunc('month', current_date) - interval '1 month')::date;
+  v_fin_prev    date := (date_trunc('month', current_date) - interval '1 day')::date;
+  v_depto_c     uuid := '44444444-4444-4444-4444-444444444444';
+  v_depto_p     uuid := '33333333-3333-3333-3333-333333333333';
+  v_casa_c      uuid := '44444444-4444-4444-4444-444444444445';
+  v_casa_p      uuid := '33333333-3333-3333-3333-333333333334';
 begin
-  -- ARRIENDO del periodo actual
+  -- Depto / Maria: periodo actual PENDIENTE (conciliar + semaforo)
   if not exists (
     select 1 from public.obligaciones
-    where contrato_id = v_contrato and tipo = 'ARRIENDO' and periodo = v_periodo
+    where contrato_id = v_depto_c and tipo = 'ARRIENDO' and periodo = v_periodo
   ) then
     insert into public.obligaciones (
       id, contrato_id, propiedad_id, tipo, descripcion, monto, monto_pagado,
       estado, fecha_vencimiento, periodo
     ) values (
-      '66666666-6666-6666-6666-666666666666', v_contrato, v_propiedad,
-      'ARRIENDO', 'Arriendo mensual', 500000, 0, 'PENDIENTE',
+      '66666666-6666-6666-6666-666666666666', v_depto_c, v_depto_p,
+      'ARRIENDO', 'Arriendo mensual Depto Los Leones', 500000, 0, 'PENDIENTE',
       least(v_periodo + 4, v_fin_mes), v_periodo
     );
   end if;
 
-  -- AGUA del periodo actual
   if not exists (
     select 1 from public.obligaciones
-    where contrato_id = v_contrato and tipo = 'AGUA' and periodo = v_periodo
+    where contrato_id = v_depto_c and tipo = 'AGUA' and periodo = v_periodo
   ) then
     insert into public.obligaciones (
       id, contrato_id, propiedad_id, tipo, descripcion, monto, monto_pagado,
       estado, fecha_vencimiento, periodo
     ) values (
-      '66666666-6666-6666-6666-666666666667', v_contrato, v_propiedad,
-      'AGUA', 'Servicio AGUA', 15000, 0, 'PENDIENTE',
+      '66666666-6666-6666-6666-666666666667', v_depto_c, v_depto_p,
+      'AGUA', 'Servicio AGUA Depto Los Leones', 15000, 0, 'PENDIENTE',
       least(v_periodo + 4, v_fin_mes), v_periodo
     );
   end if;
 
-  -- ELECTRICIDAD del periodo actual
   if not exists (
     select 1 from public.obligaciones
-    where contrato_id = v_contrato and tipo = 'ELECTRICIDAD' and periodo = v_periodo
+    where contrato_id = v_depto_c and tipo = 'ELECTRICIDAD' and periodo = v_periodo
   ) then
     insert into public.obligaciones (
       id, contrato_id, propiedad_id, tipo, descripcion, monto, monto_pagado,
       estado, fecha_vencimiento, periodo
     ) values (
-      '66666666-6666-6666-6666-666666666668', v_contrato, v_propiedad,
-      'ELECTRICIDAD', 'Servicio ELECTRICIDAD', 25000, 0, 'PENDIENTE',
+      '66666666-6666-6666-6666-666666666668', v_depto_c, v_depto_p,
+      'ELECTRICIDAD', 'Servicio ELECTRICIDAD Depto Los Leones', 25000, 0, 'PENDIENTE',
       least(v_periodo + 4, v_fin_mes), v_periodo
     );
   end if;
 
-  -- ARRIENDO del mes anterior, VENCIDA (para conciliacion de mora)
+  -- Depto / Maria: mes anterior VENCIDA (mora / semaforo ROJO)
   if not exists (
     select 1 from public.obligaciones
-    where contrato_id = v_contrato and tipo = 'ARRIENDO'
-      and periodo = (date_trunc('month', current_date) - interval '1 month')::date
+    where contrato_id = v_depto_c and tipo = 'ARRIENDO' and periodo = v_prev
   ) then
     insert into public.obligaciones (
       id, contrato_id, propiedad_id, tipo, descripcion, monto, monto_pagado,
       estado, fecha_vencimiento, periodo
     ) values (
-      '66666666-6666-6666-6666-666666666669', v_contrato, v_propiedad,
-      'ARRIENDO', 'Arriendo mensual (mes anterior)', 500000, 0, 'VENCIDA',
-      (date_trunc('month', current_date) - interval '1 month' + interval '4 days')::date,
-      (date_trunc('month', current_date) - interval '1 month')::date
+      '66666666-6666-6666-6666-666666666669', v_depto_c, v_depto_p,
+      'ARRIENDO', 'Arriendo mensual Depto Los Leones (mes anterior)', 500000, 0, 'VENCIDA',
+      least(v_prev + 4, v_fin_prev), v_prev
+    );
+  end if;
+
+  -- Casa / Diego: SOLO mes anterior PAGADA (periodo verde M4).
+  -- El mes actual se omite a proposito: generar_obligaciones_periodo(hoy)
+  -- crea ARRIENDO + GAS y deja el resultado visible en conciliacion.
+  if not exists (
+    select 1 from public.obligaciones
+    where contrato_id = v_casa_c and tipo = 'ARRIENDO' and periodo = v_prev
+  ) then
+    insert into public.obligaciones (
+      id, contrato_id, propiedad_id, tipo, descripcion, monto, monto_pagado,
+      estado, fecha_vencimiento, periodo
+    ) values (
+      '66666666-6666-6666-6666-666666666670', v_casa_c, v_casa_p,
+      'ARRIENDO', 'Arriendo mensual Casa Villa Frei (mes anterior)', 800000, 800000, 'PAGADA',
+      least(v_prev + 4, v_fin_prev), v_prev
     );
   end if;
 end;
 $$;
 
 -- ----------------------------------------------------------------------------
--- 7. DOCUMENTO OCR DE EJEMPLO (M3) - nace SIN_ASIGNAR
---    El arrendatario/ejecutivo lo sube por la UI; este registro sirve para
---    probar la asignacion a una obligacion real desde /ejecutivo/documentos.
---    No se crea fila si ya existe un documento con el mismo hash.
+-- 7. PAGOS, DOCUMENTOS Y CONCILIACIONES
+--    Se resuelven las obligaciones por (contrato, tipo, periodo) para no
+--    romper FKs si esas filas ya existian con otro UUID.
 -- ----------------------------------------------------------------------------
-insert into public.documentos (
-  id, entidad_tipo, entidad_id, tipo_documento, nombre, archivo_url, bucket,
-  subido_por, periodo, hash_archivo, estado
-) values (
-  '88888888-8888-8888-8888-888888888888',
-  'SIN_ASIGNAR', null, 'BOLETA_SERVICIO', 'Boleta demo AGUA',
-  'demo/boleta-demo-agua.pdf', 'respaldos',
-  'aaaaaaaa-0000-0000-0000-000000000002',
-  date_trunc('month', current_date)::date,
-  'seed-demo-boleta-agua-hash-001', 'PENDIENTE'
-)
-on conflict (id) do nothing;
+do $$
+declare
+  v_periodo date := date_trunc('month', current_date)::date;
+  v_prev    date := (date_trunc('month', current_date) - interval '1 month')::date;
+  v_arriendo_depto uuid;
+  v_arriendo_casa  uuid;
+begin
+  select id into v_arriendo_depto
+    from public.obligaciones
+   where contrato_id = '44444444-4444-4444-4444-444444444444'
+     and tipo = 'ARRIENDO' and periodo = v_periodo
+   limit 1;
+
+  select id into v_arriendo_casa
+    from public.obligaciones
+   where contrato_id = '44444444-4444-4444-4444-444444444445'
+     and tipo = 'ARRIENDO' and periodo = v_prev
+   limit 1;
+
+  if v_arriendo_casa is not null
+     and not exists (select 1 from public.pagos where id = '77777777-7777-7777-7777-777777777777') then
+    insert into public.pagos (
+      id, obligacion_id, monto, fecha_pago, metodo_pago, referencia,
+      registrado_por, estado_validacion
+    ) values (
+      '77777777-7777-7777-7777-777777777777',
+      v_arriendo_casa,
+      800000,
+      (date_trunc('month', current_date) - interval '1 month' + interval '3 days'),
+      'TRANSFERENCIA',
+      'TRX-DEMO-CASA-001',
+      'aaaaaaaa-0000-0000-0000-000000000002',
+      'VALIDADO'
+    );
+  end if;
+
+  if v_arriendo_casa is not null
+     and exists (select 1 from public.pagos where id = '77777777-7777-7777-7777-777777777777')
+     and not exists (select 1 from public.conciliaciones where id = '99999999-9999-9999-9999-999999999999') then
+    insert into public.conciliaciones (
+      id, pago_id, obligacion_id, monto_aplicado, diferencia, estado, resuelto_por, observacion
+    ) values (
+      '99999999-9999-9999-9999-999999999999',
+      '77777777-7777-7777-7777-777777777777',
+      v_arriendo_casa,
+      800000, 0, 'CONCILIADO',
+      'aaaaaaaa-0000-0000-0000-000000000002',
+      'Pago de arriendo Casa Villa Frei conciliado en demo'
+    );
+  end if;
+
+  if v_arriendo_depto is not null
+     and not exists (select 1 from public.pagos where id = '77777777-7777-7777-7777-777777777778') then
+    insert into public.pagos (
+      id, obligacion_id, monto, fecha_pago, metodo_pago, referencia,
+      registrado_por, estado_validacion
+    ) values (
+      '77777777-7777-7777-7777-777777777778',
+      v_arriendo_depto,
+      500000,
+      now(),
+      'TRANSFERENCIA',
+      'TRX-DEMO-LEONES-001',
+      'aaaaaaaa-0000-0000-0000-000000000004',
+      'PENDIENTE'
+    );
+  end if;
+
+  update public.documentos
+     set estado = 'EXTRAIDO',
+         nombre = 'Boleta Aguas Andinas — Los Leones'
+   where id = '88888888-8888-8888-8888-888888888888'
+     and estado = 'PENDIENTE';
+
+  if not exists (select 1 from public.documentos where id = '88888888-8888-8888-8888-888888888888')
+     and not exists (select 1 from public.documentos where hash_archivo = 'seed-demo-boleta-agua-hash-001') then
+    insert into public.documentos (
+      id, entidad_tipo, entidad_id, tipo_documento, nombre, archivo_url, bucket,
+      subido_por, periodo, hash_archivo, estado, propiedad_id
+    ) values (
+      '88888888-8888-8888-8888-888888888888',
+      'SIN_ASIGNAR', null, 'BOLETA_SERVICIO', 'Boleta Aguas Andinas — Los Leones',
+      'demo/boleta-aguas-andinas-leones.pdf', 'respaldos',
+      'aaaaaaaa-0000-0000-0000-000000000002',
+      v_periodo,
+      'seed-demo-boleta-agua-hash-001', 'EXTRAIDO',
+      null
+    );
+  end if;
+
+  if not exists (select 1 from public.extracciones_documento where id = '12121212-1212-1212-1212-121212121212')
+     and exists (select 1 from public.documentos where id = '88888888-8888-8888-8888-888888888888') then
+    insert into public.extracciones_documento (
+      id, documento_id, solicitado_por, objetivo, estado,
+      empresa_detectada, numero_cliente, monto_detectado, fecha_vencimiento,
+      confianza_ocr, resultado_validacion, datos_crudos
+    ) values (
+      '12121212-1212-1212-1212-121212121212',
+      '88888888-8888-8888-8888-888888888888',
+      'aaaaaaaa-0000-0000-0000-000000000002',
+      'Boleta de agua para asignar a obligación AGUA',
+      'EXTRAIDA',
+      'Aguas Andinas', 'CLI-LEONES-AGUA', 14890,
+      least((v_periodo + 4), (date_trunc('month', current_date) + interval '1 month - 1 day')::date),
+      91.50, 'REVISAR',
+      jsonb_build_object(
+        'origen', 'seed-demo',
+        'nota', 'Monto detectado distinto del estimado (15000) para mostrar reemplazo al confirmar'
+      )
+    );
+  end if;
+
+  if v_arriendo_depto is not null
+     and not exists (select 1 from public.documentos where id = '88888888-8888-8888-8888-888888888889')
+     and not exists (select 1 from public.documentos where hash_archivo = 'seed-demo-comprobante-arriendo-hash-001') then
+    insert into public.documentos (
+      id, entidad_tipo, entidad_id, tipo_documento, nombre, archivo_url, bucket,
+      subido_por, periodo, hash_archivo, estado, propiedad_id
+    ) values (
+      '88888888-8888-8888-8888-888888888889',
+      'OBLIGACION', v_arriendo_depto,
+      'COMPROBANTE_PAGO', 'Comprobante transferencia arriendo Los Leones',
+      'demo/comprobante-arriendo-leones.pdf', 'respaldos',
+      'aaaaaaaa-0000-0000-0000-000000000004',
+      v_periodo,
+      'seed-demo-comprobante-arriendo-hash-001', 'PENDIENTE',
+      '33333333-3333-3333-3333-333333333333'
+    );
+  end if;
+
+  update public.pagos
+     set documento_id = '88888888-8888-8888-8888-888888888889'
+   where id = '77777777-7777-7777-7777-777777777778'
+     and documento_id is null
+     and exists (select 1 from public.documentos where id = '88888888-8888-8888-8888-888888888889');
+end;
+$$;
 
 -- ----------------------------------------------------------------------------
--- 8. ENLACE DE ARRENDATARIO (por email) por si el trigger no lo hizo
+-- 9. ENLACE DE ARRENDATARIO (por si el trigger no lo hizo)
 -- ----------------------------------------------------------------------------
 update public.arrendatarios
    set user_id = 'aaaaaaaa-0000-0000-0000-000000000004'
@@ -383,17 +568,28 @@ update public.arrendatarios
 commit;
 
 -- ============================================================================
--- VERIFICACION (opcional): reporte rapido de filas creadas
+-- VERIFICACION: filas del escenario demo
 -- ============================================================================
-select 'usuarios' as tabla, count(*) from public.usuarios
+select 'usuarios' as tabla, count(*)::text as n from public.usuarios
  where id in (
    'aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000002',
    'aaaaaaaa-0000-0000-0000-000000000003','aaaaaaaa-0000-0000-0000-000000000004')
-union all select 'contratos', count(*) from public.contratos
- where id = '44444444-4444-4444-4444-444444444444'
-union all select 'obligaciones', count(*) from public.obligaciones
+union all select 'propiedades', count(*)::text from public.propiedades
+ where id in (
+   '33333333-3333-3333-3333-333333333333',
+   '33333333-3333-3333-3333-333333333334',
+   '33333333-3333-3333-3333-333333333335')
+union all select 'contratos', count(*)::text from public.contratos
+ where id in (
+   '44444444-4444-4444-4444-444444444444',
+   '44444444-4444-4444-4444-444444444445')
+union all select 'obligaciones_depto', count(*)::text from public.obligaciones
  where contrato_id = '44444444-4444-4444-4444-444444444444'
-union all select 'cuentas_servicios', count(*) from public.cuentas_servicios
- where propiedad_id = '33333333-3333-3333-3333-333333333333'
-union all select 'documentos_sin_asignar', count(*) from public.documentos
- where entidad_tipo = 'SIN_ASIGNAR';
+union all select 'obligaciones_casa_pagadas', count(*)::text from public.obligaciones
+ where contrato_id = '44444444-4444-4444-4444-444444444445' and estado = 'PAGADA'
+union all select 'pagos_pendientes_maria', count(*)::text from public.pagos
+ where id = '77777777-7777-7777-7777-777777777778' and estado_validacion = 'PENDIENTE'
+union all select 'documentos_sin_asignar', count(*)::text from public.documentos
+ where id = '88888888-8888-8888-8888-888888888888' and entidad_tipo = 'SIN_ASIGNAR'
+union all select 'extracciones_ocr', count(*)::text from public.extracciones_documento
+ where id = '12121212-1212-1212-1212-121212121212';

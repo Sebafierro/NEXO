@@ -36,15 +36,14 @@ export function generarPDFLiquidacion(data: {
   doc.setFontSize(9);
   
   for (const item of data.items || []) {
-    const concepto = item.concepto.substring(0, 70);
-    const monto = Number(item.monto || 0);
-    const signo = item.signo !== undefined ? item.signo : (monto >= 0 ? 1 : -1);
-    const valor = signo >= 0 ? monto : -monto;
+    const concepto = (item.concepto || "").substring(0, 70);
+    const monto = Math.abs(Number(item.monto || 0));
+    const signo = item.signo !== undefined ? item.signo : (Number(item.monto || 0) >= 0 ? 1 : -1);
     doc.text(concepto, 20, y);
     if (signo >= 0) {
-      doc.text(`$${valor.toLocaleString("es-CL")}`, 170, y, { align: "right" });
+      doc.text(`$${monto.toLocaleString("es-CL")}`, 170, y, { align: "right" });
     } else {
-      doc.text(`-$${valor.toLocaleString("es-CL")}`, 170, y, { align: "right" });
+      doc.text(`-$${monto.toLocaleString("es-CL")}`, 170, y, { align: "right" });
     }
     y += 6;
     if (y > 250) {

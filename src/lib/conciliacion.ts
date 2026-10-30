@@ -37,7 +37,8 @@ export function aplicarPago(
   montoPago: number,
   hoy: Date = new Date()
 ): { montoPagado: number; saldo: number; estado: EstadoObligacion } {
-  const montoPagado = obligacion.montoPagado + montoPago;
+  const montoPagadoAcumulado = obligacion.montoPagado + montoPago;
+  const montoPagado = montoPagadoAplicable(obligacion.monto, montoPagadoAcumulado);
   const saldo = calcularSaldo(obligacion.monto, montoPagado);
   let estado: EstadoObligacion;
   if (saldo <= 0) estado = "PAGADA";

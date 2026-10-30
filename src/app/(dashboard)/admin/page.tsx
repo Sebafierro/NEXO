@@ -7,6 +7,12 @@ import { formatearFecha, formatearMoneda } from "@/lib/format";
 import { Semaforo } from "@/components/dashboard/semaforo";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/shared/page-header";
+import { SectionCard } from "@/components/shared/section-card";
+import { KpiCard } from "@/components/shared/kpi-card";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { DashboardCharts } from "./dashboard-charts";
+import { Building2, ClipboardCheck, FileWarning, Receipt } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -113,16 +119,20 @@ export default async function AdminDashboardPage() {
   const documentosPendientes = (documentosRes.data ??
     []) as unknown as ExtraccionPendiente[];
 
+  const liquidacionesPendientesCount = liquidaciones.length;
+
+  const porEstadoPropiedades = [
+    { name: "Arrendadas", value: arrendadas },
+    { name: "Disponibles", value: disponibles },
+    { name: "En mantenimiento", value: enMantenimiento },
+  ].filter((d) => d.value > 0);
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Dashboard Gerencial
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Indicadores generales de las propiedades y su estado financiero.
-        </p>
-      </div>
+      <PageHeader
+        title="Dashboard gerencial"
+        description="Indicadores generales de las propiedades, obligaciones, liquidaciones y documentos."
+      />
 
       <Semaforo
         alDia={alDia}
@@ -130,6 +140,15 @@ export default async function AdminDashboardPage() {
         enMora={enMora}
         moraMonto={moraMonto}
         totalContratos={contratosVigentes}
+      />
+
+      <DashboardCharts
+        propiedadesActivas={totalPropiedades}
+        contratosVigentes={contratosVigentes}
+        obligacionesVencidas={enMora}
+        liquidacionesPendientes={liquidacionesPendientesCount}
+        documentosPendientes={documentosPendientes.length}
+        porEstadoPropiedades={porEstadoPropiedades}
       />
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

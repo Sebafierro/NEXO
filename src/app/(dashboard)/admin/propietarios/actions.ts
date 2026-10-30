@@ -11,7 +11,9 @@ export async function crearPropietario(formData: FormData) {
   await exigirRol(ROLES.ADMINISTRADOR);
   const supabase = await createClient();
 
+  const userId = formData.get("user_id")?.toString().trim() || "";
   const raw = {
+    user_id: userId === "" ? null : userId,
     rut: formData.get("rut")?.toString() || "",
     nombres: formData.get("nombres")?.toString() || "",
     apellidos: formData.get("apellidos")?.toString() || "",
@@ -36,7 +38,9 @@ export async function actualizarPropietario(id: string, formData: FormData) {
   await exigirRol(ROLES.ADMINISTRADOR);
   const supabase = await createClient();
 
+  const userId = formData.get("user_id")?.toString().trim() || "";
   const raw = {
+    user_id: userId === "" ? null : userId,
     rut: formData.get("rut")?.toString() || "",
     nombres: formData.get("nombres")?.toString() || "",
     apellidos: formData.get("apellidos")?.toString() || "",

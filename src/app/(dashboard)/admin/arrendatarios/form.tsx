@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { crearArrendatario, actualizarArrendatario } from "./actions";
 
-type Row = { id: string; rut: string|null; nombres: string; apellidos: string; telefono: string|null; email: string|null; estado: string };
+type Row = { id: string; user_id?: string|null; rut: string|null; nombres: string; apellidos: string; telefono: string|null; email: string|null; direccion?: string|null; estado: string };
 type Props = { mode: "crear"|"editar"; trigger: React.ReactNode; arrendatario?: Row };
 
 export function ArrendatarioForm({ mode, trigger, arrendatario }: Props) {
@@ -24,6 +24,7 @@ export function ArrendatarioForm({ mode, trigger, arrendatario }: Props) {
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader><DialogTitle>{mode==='crear'?'Agregar arrendatario':'Editar arrendatario'}</DialogTitle></DialogHeader>
         <form action={onSubmit} className="grid grid-cols-2 gap-4">
+          <div className="col-span-2"><Label htmlFor="user_id">ID Usuario (auth.users)</Label><Input id="user_id" name="user_id" placeholder="UUID opcional para vincular portal" defaultValue={arrendatario?.user_id??""}/></div>
           <div className="col-span-2"><Label htmlFor="rut">RUT</Label><Input id="rut" name="rut" defaultValue={arrendatario?.rut??""} required/></div>
           <div><Label htmlFor="nombres">Nombres</Label><Input id="nombres" name="nombres" defaultValue={arrendatario?.nombres??""} required/></div>
           <div><Label htmlFor="apellidos">Apellidos</Label><Input id="apellidos" name="apellidos" defaultValue={arrendatario?.apellidos??""} required/></div>

@@ -791,7 +791,25 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      vista_auditoria: {
+        Row: {
+          accion: string | null
+          entidad: string | null
+          entidad_id: string | null
+          fecha: string | null
+          id: string | null
+          ip: string | null
+          usuario_email: string | null
+          usuario_id: string | null
+          usuario_nombre: string | null
+          usuario_rol: string | null
+          valor_anterior: Json | null
+          valor_nuevo: Json | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Functions: {
       confirmar_extraccion_ocr: {

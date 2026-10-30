@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
 
 type Usuario = {
   id: string;
@@ -69,6 +70,7 @@ export function UsuarioFormDialog({ mode, usuario, trigger, open, onOpenChange }
             telefono: telefono || null,
             rol: rol as Rol,
           });
+          toast.success('Usuario creado correctamente');
         } else if (usuario) {
           await actualizarUsuario(usuario.id, {
             nombres: nombres || null,
@@ -76,11 +78,14 @@ export function UsuarioFormDialog({ mode, usuario, trigger, open, onOpenChange }
             telefono: telefono || null,
             rol: rol as Rol,
           });
+          toast.success('Usuario actualizado correctamente');
         }
         onOpenChange?.(false);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error desconocido');
+        const message = err instanceof Error ? err.message : 'Error desconocido';
+        setError(message);
+        toast.error(message);
       }
     });
   }
