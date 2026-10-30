@@ -35,7 +35,7 @@ export const DASHBOARD_POR_ROL: Record<Rol, string> = {
 // Rutas protegidas y qué roles pueden acceder a ellas.
 // El Proxy (src/proxy.ts) bloquea la navegación por rol usando este mapa.
 export const RUTAS_PERMITIDAS: Record<string, Rol[]> = {
-  "/admin": [ROLES.ADMINISTRADOR],
+  "/admin": [ROLES.ADMINISTRADOR, ROLES.EJECUTIVO],
   "/ejecutivo": [ROLES.EJECUTIVO, ROLES.ADMINISTRADOR],
   "/propietario": [ROLES.ADMINISTRADOR, ROLES.PROPIETARIO],
   "/arrendatario": [ROLES.ADMINISTRADOR, ROLES.ARRENDATARIO],

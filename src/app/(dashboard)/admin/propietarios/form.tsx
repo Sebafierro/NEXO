@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { crearPropietario, actualizarPropietario } from "./actions";
+import { toast } from "sonner";
 
 type PropietarioRow = {
   id: string;
+  user_id?: string | null;
   rut: string | null;
   nombres: string;
   apellidos: string;
@@ -27,14 +29,23 @@ type Props = {
 
 export function PropietarioForm({ mode, trigger, propietario }: Props) {
   const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   async function onSubmit(formData: FormData) {
-    if (mode === "editar" && propietario) {
-      await actualizarPropietario(propietario.id, formData);
-    } else {
-      await crearPropietario(formData);
-    }
-    setOpen(false);
+    startTransition(async () => {
+      try {
+        if (mode === "editar" && propietario) {
+          await actualizarPropietario(propietario.id, formData);
+          toast.success("Propietario actualizado correctamente");
+        } else {
+          await crearPropietario(formData);
+          toast.success("Propietario creado correctamente");
+        }
+        setOpen(false);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar el propietario");
+      }
+    });
   }
 
   return (
@@ -45,6 +56,10 @@ export function PropietarioForm({ mode, trigger, propietario }: Props) {
           <DialogTitle>{mode === "crear" ? "Agregar propietario" : "Editar propietario"}</DialogTitle>
         </DialogHeader>
         <form action={onSubmit} className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <Label htmlFor="user_id">ID Usuario (auth.users)</Label>
+            <Input id="user_id" name="user_id" placeholder="UUID opcional para vincular portal" defaultValue={propietario?.user_id ?? ""} />
+          </div>
           <div className="col-span-2">
             <Label htmlFor="rut">RUT</Label>
             <Input id="rut" name="rut" defaultValue={propietario?.rut ?? ""} required />
@@ -82,10 +97,10 @@ export function PropietarioForm({ mode, trigger, propietario }: Props) {
             </Select>
           </div>
           <div className="col-span-2 flex justify-end gap-2">
-            <Button variant="outline" type="button" onClick={() => setOpen(false)}>
+            <Button variant="outline" type="button" onClick={() => setOpen(false)} disabled={isPending}>
               Cancelar
             </Button>
-            <Button type="submit">{mode === "crear" ? "Guardar" : "Actualizar"}</Button>
+            <Button type="submit" disabled={isPending}>{isPending ? "Guardando..." : mode === "crear" ? "Guardar" : "Actualizar"}</Button>
           </div>
         </form>
       </DialogContent>

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Pencil, Trash2 } from "lucide-react";
 import { PropietarioForm } from "./form";
 import { eliminarPropietario } from "./actions";
+import { toast } from "sonner";
 
 export type PropietarioRow = {
   id: string;
@@ -48,18 +49,23 @@ export function PropietariosTable({ data }: Props) {
               </Button>
             }
           />
-          <form
-            action={async () => {
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Eliminar"
+            onClick={async () => {
               if (confirm("¿Eliminar propietario?")) {
-                await eliminarPropietario(r.id);
+                try {
+                  await eliminarPropietario(r.id);
+                  toast.success("Propietario eliminado correctamente");
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "No se pudo eliminar el propietario");
+                }
               }
             }}
-            className="inline-flex"
           >
-            <Button variant="ghost" size="icon" type="submit" title="Eliminar">
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </form>
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       ),
     },

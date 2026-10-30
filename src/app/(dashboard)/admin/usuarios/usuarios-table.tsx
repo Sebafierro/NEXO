@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Trash2, Pencil } from 'lucide-react';
 import { UsuarioFormDialog } from './usuario-form-dialog';
 import { eliminarUsuario } from './actions';
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { formatearFecha } from '@/lib/format';
 import { ETIQUETA_ROL, ROLES, type Rol } from '@/lib/roles';
+import { toast } from 'sonner';
 
 type Usuario = {
   id: string;
@@ -61,9 +63,10 @@ export function UsuariosTable({ usuarios }: Props) {
     startTransition(async () => {
       try {
         await eliminarUsuario(usuarioAEliminar.id);
+        toast.success('Usuario eliminado correctamente');
         setUsuarioAEliminar(null);
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Error desconocido');
+        toast.error(err instanceof Error ? err.message : 'Error desconocido');
       }
     });
   }

@@ -319,7 +319,10 @@ export function ExtraccionesOcr({ filas, contratos, obligaciones, propiedades }:
                           <Button
                             size="sm"
                             type="button"
-                            disabled={ocupado(fila.documento_id) || !(obligacionPorDocumento[fila.documento_id] || asignadaAObligacion)}
+                            disabled={
+                              ocupado(fila.documento_id) ||
+                              !(obligacionPorDocumento[fila.documento_id] || (asignadaAObligacion && !contratoPorDocumento[fila.documento_id] && !propiedadPorDocumento[fila.documento_id]))
+                            }
                             onClick={() => handleAsignar(fila)}
                           >
                             Asignar

@@ -51,6 +51,16 @@ const NAV_POR_ROL: Record<Rol, NavItem[]> = {
       label: "Aprobación Liquidaciones",
       icon: ClipboardCheck,
     },
+    {
+      href: "/admin/importacion",
+      label: "Importación masiva",
+      icon: FileScan,
+    },
+    {
+      href: "/admin/auditoria",
+      label: "Auditoría",
+      icon: History,
+    },
   ],
   [ROLES.EJECUTIVO]: [
     { href: "/ejecutivo", label: "Dashboard", icon: LayoutDashboard },
@@ -204,7 +214,7 @@ export function Sidebar({ rol, nombre, email }: Props) {
         </SheetContent>
       </Sheet>
 
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:block">
+      <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:block">
         {contenido}
       </aside>
     </>

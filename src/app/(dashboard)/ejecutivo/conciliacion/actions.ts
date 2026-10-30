@@ -113,10 +113,14 @@ export async function registrarPago(obligacionId: string, formData: FormData) {
     .single();
   if (errorPago) throw new Error(errorPago.message);
 
+  const montoObligacion = Number(obligacion.monto);
+  const montoPagadoActual = Number(obligacion.monto_pagado || 0);
+  const saldoPendiente = Math.max(0, montoObligacion - montoPagadoActual);
+
   const resultado = aplicarPago(
     {
-      monto: Number(obligacion.monto),
-      montoPagado: Number(obligacion.monto_pagado),
+      monto: montoObligacion,
+      montoPagado: montoPagadoActual,
       estado: obligacion.estado as Parameters<typeof aplicarPago>[0]["estado"],
       fechaVencimiento: obligacion.fecha_vencimiento,
     },
@@ -129,17 +133,31 @@ export async function registrarPago(obligacionId: string, formData: FormData) {
     .eq("id", obligacionId);
   if (errorObligacion) throw new Error(errorObligacion.message);
 
-  // Solo se deja traza en conciliaciones cuando el monto no calza exactamente.
-  const estadoConc = estadoConciliacion(monto, Number(obligacion.monto));
+  // Solo se deja traza en conciliaciones cuando el monto no calza exactamente
+  // con el saldo pendiente (o con el total si no hay saldo previo).
+  const montoEsperado = saldoPendiente > 0 ? saldoPendiente : montoObligacion;
+  const estadoConc = estadoConciliacion(monto, montoEsperado);
   if (estadoConc === "CON_DIFERENCIA") {
     const { error: errorConc } = await supabase.from("conciliaciones").insert({
       pago_id: pago.id,
       obligacion_id: obligacionId,
       monto_aplicado: monto,
-      diferencia: calcularDiferencia(monto, Number(obligacion.monto)),
+      diferencia: calcularDiferencia(monto, montoEsperado),
       estado: "CON_DIFERENCIA",
       resuelto_por: sesion.userId,
-      observacion: `Pago por ${monto} no calza con la obligación de ${Number(obligacion.monto)}`,
+      observacion: `Pago por ${monto} no calza con el saldo pendiente de ${montoEsperado}`,
+    });
+    if (errorConc) throw new Error(errorConc.message);
+  } else if (resultado.estado === "PAGADA" || resultado.saldo <= 0) {
+    // Pago que completa la obligación queda conciliado correctamente
+    const { error: errorConc } = await supabase.from("conciliaciones").insert({
+      pago_id: pago.id,
+      obligacion_id: obligacionId,
+      monto_aplicado: monto,
+      diferencia: 0,
+      estado: "CONCILIADO",
+      resuelto_por: sesion.userId,
+      observacion: "Pago aplicado correctamente",
     });
     if (errorConc) throw new Error(errorConc.message);
   }

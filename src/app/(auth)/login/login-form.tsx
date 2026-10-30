@@ -52,15 +52,15 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader className="text-center">
-        <CardTitle className="text-3xl font-bold">NEXO</CardTitle>
-        <CardDescription>
-          Inicia sesión en tu cartera inmobiliaria
+    <Card className="w-full shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/95">
+      <CardHeader className="space-y-2 text-center">
+        <CardTitle className="text-3xl font-bold tracking-tight">NEXO</CardTitle>
+        <CardDescription className="text-base">
+          Gestión integral de cartera inmobiliaria
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={iniciarSesion} className="space-y-4">
+        <form onSubmit={iniciarSesion} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="email">Correo electrónico</Label>
             <Input
@@ -71,6 +71,7 @@ export function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
+              className="h-10"
             />
           </div>
           <div className="space-y-2">
@@ -78,23 +79,26 @@ export function LoginForm() {
             <Input
               id="password"
               type="password"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
+              className="h-10"
             />
           </div>
 
           {error ? (
-            <p className="text-sm font-medium text-destructive">{error}</p>
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
+              <p className="text-sm font-medium text-destructive">{error}</p>
+            </div>
           ) : null}
 
-          <Button type="submit" className="w-full" disabled={cargando}>
+          <Button type="submit" className="w-full h-10" disabled={cargando}>
             {cargando ? "Ingresando..." : "Ingresar"}
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">
-            {/* TODO: flujo de registro/recuperación de contraseña */}
             ¿No tienes cuenta? Contacta al administrador.
           </p>
         </form>

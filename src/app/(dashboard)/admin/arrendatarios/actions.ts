@@ -10,7 +10,9 @@ import { arrendatarioSchema } from "@/lib/schemas";
 export async function crearArrendatario(formData: FormData) {
   await exigirRol(ROLES.ADMINISTRADOR);
   const supabase = await createClient();
+  const userId = formData.get("user_id")?.toString().trim() || "";
   const raw = {
+    user_id: userId === "" ? null : userId,
     rut: formData.get("rut")?.toString() || "",
     nombres: formData.get("nombres")?.toString() || "",
     apellidos: formData.get("apellidos")?.toString() || "",
@@ -19,8 +21,12 @@ export async function crearArrendatario(formData: FormData) {
     direccion: formData.get("direccion")?.toString() || "",
     estado: formData.get("estado")?.toString() || "ACTIVO",
   };
+
   const parsed = arrendatarioSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || "Datos inválidos");
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message || "Datos inválidos");
+  }
+
   const { error } = await supabase.from("arrendatarios").insert(parsed.data);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/arrendatarios");
@@ -30,7 +36,9 @@ export async function crearArrendatario(formData: FormData) {
 export async function actualizarArrendatario(id: string, formData: FormData) {
   await exigirRol(ROLES.ADMINISTRADOR);
   const supabase = await createClient();
+  const userId = formData.get("user_id")?.toString().trim() || "";
   const raw = {
+    user_id: userId === "" ? null : userId,
     rut: formData.get("rut")?.toString() || "",
     nombres: formData.get("nombres")?.toString() || "",
     apellidos: formData.get("apellidos")?.toString() || "",
@@ -39,8 +47,12 @@ export async function actualizarArrendatario(id: string, formData: FormData) {
     direccion: formData.get("direccion")?.toString() || "",
     estado: formData.get("estado")?.toString() || "ACTIVO",
   };
+
   const parsed = arrendatarioSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || "Datos inválidos");
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message || "Datos inválidos");
+  }
+
   const { error } = await supabase.from("arrendatarios").update(parsed.data).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/arrendatarios");

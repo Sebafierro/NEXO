@@ -53,12 +53,25 @@ async function generarPDFParaLiquidacion(liquidacionId: string) {
 export async function aprobarLiquidacion(liquidacionId: string) {
   const sesion = await exigirRol(ROLES.ADMINISTRADOR);
   const supabase = await createClient();
-  
+
+  const { data: liquidacion, error: fetchError } = await supabase
+    .from("liquidaciones")
+    .select("id, estado")
+    .eq("id", liquidacionId)
+    .single();
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!liquidacion) throw new Error("Liquidación no encontrada");
+  if (liquidacion.estado !== "GENERADA") {
+    throw new Error(`Solo se pueden aprobar liquidaciones en estado GENERADA (estado actual: ${liquidacion.estado})`);
+  }
+
   const { error } = await supabase
     .from("liquidaciones")
     .update({ estado: "APROBADA", aprobado_por: sesion.userId, aprobado_en: new Date().toISOString() })
-    .eq("id", liquidacionId);
-  
+    .eq("id", liquidacionId)
+    .eq("estado", "GENERADA");
+
   if (error) throw new Error(error.message);
 
   await generarPDFParaLiquidacion(liquidacionId);
@@ -74,14 +87,27 @@ export async function rechazarLiquidacion(liquidacionId: string, observaciones: 
   }
   const sesion = await exigirRol(ROLES.ADMINISTRADOR);
   const supabase = await createClient();
-  
+
+  const { data: liquidacion, error: fetchError } = await supabase
+    .from("liquidaciones")
+    .select("id, estado")
+    .eq("id", liquidacionId)
+    .single();
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!liquidacion) throw new Error("Liquidación no encontrada");
+  if (liquidacion.estado !== "GENERADA") {
+    throw new Error(`Solo se pueden rechazar liquidaciones en estado GENERADA (estado actual: ${liquidacion.estado})`);
+  }
+
   const { error } = await supabase
     .from("liquidaciones")
     .update({ estado: "RECHAZADA", aprobado_por: sesion.userId, aprobado_en: new Date().toISOString(), observaciones: observaciones.trim() })
-    .eq("id", liquidacionId);
-  
+    .eq("id", liquidacionId)
+    .eq("estado", "GENERADA");
+
   if (error) throw new Error(error.message);
-  
+
   revalidatePath("/admin/liquidaciones");
   revalidatePath("/propietario/liquidaciones");
   revalidatePath("/ejecutivo/liquidaciones");
@@ -92,13 +118,30 @@ export async function aprobarLiquidacionesLote(formData: FormData) {
   const supabase = await createClient();
   const ids = formData.getAll("ids") as string[];
   if (ids.length === 0) return;
-  
-  await supabase
+
+  // Solo aprobar las que estén en estado GENERADA
+  const { data: liquidaciones } = await supabase
     .from("liquidaciones")
-    .update({ estado: "APROBADA", aprobado_por: sesion.userId, aprobado_en: new Date().toISOString() })
+    .select("id, estado")
     .in("id", ids);
 
-  for (const id of ids) {
+  const idsValidos = (liquidaciones ?? [])
+    .filter((l: any) => l.estado === "GENERADA")
+    .map((l: any) => l.id);
+
+  if (idsValidos.length === 0) {
+    throw new Error("No hay liquidaciones en estado GENERADA para aprobar");
+  }
+
+  const { error } = await supabase
+    .from("liquidaciones")
+    .update({ estado: "APROBADA", aprobado_por: sesion.userId, aprobado_en: new Date().toISOString() })
+    .in("id", idsValidos)
+    .eq("estado", "GENERADA");
+
+  if (error) throw new Error(error.message);
+
+  for (const id of idsValidos) {
     await generarPDFParaLiquidacion(id);
   }
 
@@ -112,17 +155,33 @@ export async function rechazarLiquidacionesLote(formData: FormData) {
   const supabase = await createClient();
   const ids = formData.getAll("ids") as string[];
   const observaciones = formData.get("observaciones")?.toString() || "";
-  
+
   if (!observaciones || observaciones.trim() === "") {
-    throw new Error("El motivo de rechazo es obligatorio para aprobación en lote");
+    throw new Error("El motivo de rechazo es obligatorio para rechazo en lote");
   }
   if (ids.length === 0) return;
-  
-  await supabase
+
+  const { data: liquidaciones } = await supabase
+    .from("liquidaciones")
+    .select("id, estado")
+    .in("id", ids);
+
+  const idsValidos = (liquidaciones ?? [])
+    .filter((l: any) => l.estado === "GENERADA")
+    .map((l: any) => l.id);
+
+  if (idsValidos.length === 0) {
+    throw new Error("No hay liquidaciones en estado GENERADA para rechazar");
+  }
+
+  const { error } = await supabase
     .from("liquidaciones")
     .update({ estado: "RECHAZADA", aprobado_por: sesion.userId, aprobado_en: new Date().toISOString(), observaciones: observaciones.trim() })
-    .in("id", ids);
-  
+    .in("id", idsValidos)
+    .eq("estado", "GENERADA");
+
+  if (error) throw new Error(error.message);
+
   revalidatePath("/admin/liquidaciones");
   revalidatePath("/propietario/liquidaciones");
   revalidatePath("/ejecutivo/liquidaciones");
